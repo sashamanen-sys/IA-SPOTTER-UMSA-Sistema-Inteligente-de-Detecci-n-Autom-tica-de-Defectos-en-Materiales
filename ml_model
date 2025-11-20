@@ -1,0 +1,103 @@
+"""
+Clase para cargar, entrenar y predecir defectos metalmecánicos.
+Utiliza Transfer Learning (VGG16) para una extracción de características robusta.
+Se ha corregido el orden de CLASS_NAMES en función del ciclo de error observado
+en los logs para garantizar la coincidencia exacta del índice de salida del modelo 
+con la etiqueta correcta.
+"""
+
+import tensorflow as tf
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, Flatten, Dropout
+from tensorflow.keras.applications import VGG16
+from tensorflow.keras.models import load_model
+from tensorflow.keras.optimizers import Adam
+import numpy as np
+import os
+
+# Dimensiones requeridas por VGG16
+IMG_HEIGHT = 224
+IMG_WIDTH = 224
+
+# ¡CORRECCIÓN FINAL APLICADA! 
+# Este orden mapea los índices internos del modelo (0, 1, 2, 3, 4, 5) a los 
+# nombres de defecto correctos, resolviendo la confusión cíclica.
+CLASS_NAMES = [
+    "Crazing",           # Índice 0 
+    "Inclusion",         # Índice 1 
+    "Patches",           # Índice 2 
+    "Pitted Surface",    # Índice 3 
+    "Rolled-in Scale",   # Índice 4 
+    "Scratches"          # Índice 5 
+]
+
+MODEL_PATH = "model/saved_model.h5"
+
+class DefectClassifier:
+    def __init__(self):
+        # Esta inicialización ahora usará la lista CLASS_NAMES corregida
+        self.model = self._load_model()
+
+    def _load_model(self):
+        """Carga el modelo H5 si existe, si no, genera la arquitectura VGG16."""
+        if os.path.exists(MODEL_PATH):
+            try:
+                # Cargar el modelo pre-entrenado
+                print(f"Cargando modelo existente desde: {MODEL_PATH}")
+                return load_model(MODEL_PATH)
+            except Exception as e:
+                print(f"Error al cargar el modelo H5: {e}. Se intentará construir uno nuevo.")
+        
+        # Si el modelo no existe o falló la carga, construir la arquitectura de Transfer Learning
+        return self._build_vgg16_model()
+
+    def _build_vgg16_model(self):
+        """Construye un modelo de Transfer Learning utilizando VGG16."""
+        print("Construyendo nueva arquitectura VGG16 para Transfer Learning...")
+        
+        # 1. Cargar la base VGG16 pre-entrenada con pesos de ImageNet
+        vgg_base = VGG16(weights='imagenet', 
+                         include_top=False, 
+                         input_shape=(IMG_HEIGHT, IMG_WIDTH, 3))
+        
+        # 2. Congelar las capas base para no modificar los pesos pre-entrenados
+        vgg_base.trainable = False 
+        
+        # 3. Construir la cabeza de clasificación (Classification Head)
+        x = vgg_base.output
+        x = Flatten()(x) # Aplanar la salida convolucional
+        x = Dense(256, activation='relu')(x)
+        x = Dropout(0.5)(x) # Capa de Dropout para prevenir el sobreajuste
+        
+        # Capa de salida: 6 clases (defectos) y activación softmax
+        predictions = Dense(len(CLASS_NAMES), activation='softmax')(x)
+        
+        # 4. Crear el modelo final
+        model = Model(inputs=vgg_base.input, outputs=predictions)
+        
+        # 5. Compilar el modelo
+        model.compile(optimizer=Adam(learning_rate=0.0001),
+                      loss='categorical_crossentropy',
+                      metrics=['accuracy'])
+                      
+        print("Arquitectura VGG16 construida y lista para el entrenamiento.")
+        return model
+
+    def predict(self, img_array: np.ndarray):
+        """
+        Realiza la predicción del tipo de defecto y su confianza.
+        img_array: Imagen preprocesada (224x224, normalizada, dim. batch).
+        """
+        if self.model is None:
+            return "Error de Modelo", 0.0
+
+        predictions = self.model.predict(img_array)[0]
+        
+        # El índice de la predicción con mayor confianza
+        predicted_index = np.argmax(predictions)
+        
+        # Usa la lista corregida para mapear el índice
+        defect_type = CLASS_NAMES[predicted_index]
+        confidence = predictions[predicted_index]
+        
+        return defect_type, confidence
