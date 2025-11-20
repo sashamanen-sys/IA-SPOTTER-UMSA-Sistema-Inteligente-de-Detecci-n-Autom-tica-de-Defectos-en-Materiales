@@ -1,0 +1,2 @@
+# IA-SPOTTER-UMSA-Sistema-Inteligente-de-Detecci-n-Autom-tica-de-Defectos-en-Materiales
+Detección automática de 6 defectos en acero (crazing, scratches, patches, pitted surface, inclusion, rolled-in scale) con CNN propia (87% precisión). App 100% local (Tkinter + OpenCV), cámara en tiempo real, SQLite. Entrenado en Colab, ejecuta en cualquier laptop sin internet. Proyecto  Aeronáutica y Mecánica Industrial – UMSA 2025.
